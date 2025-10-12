@@ -34,7 +34,7 @@ export function SignInScreen({ onSignIn }: SignInScreenProps) {
         {/* Logo */}
         <div className="text-center mb-12">
           <h1 className="text-5xl font-thin tracking-wider mb-2 bg-gradient-to-r from-cyan-400 via-purple-400 to-magenta-400 text-transparent bg-clip-text">
-            NEXUS
+            kryptoArt
           </h1>
           <p className="text-white/60 text-sm">Welcome to the future of NFTs</p>
         </div>

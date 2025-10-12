@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Plus, ArrowUpRight, ArrowDownLeft, RefreshCw, Wallet as WalletIcon, X } from 'lucide-react';
 import { GlassCard } from './GlassCard';
 import { NeonButton } from './NeonButton';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 interface WalletScreenProps {
   balance: number;

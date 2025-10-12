@@ -3,7 +3,7 @@ import { ArrowLeft, Share2, Heart, Clock, BarChart3 } from 'lucide-react';
 import { GlassCard } from './GlassCard';
 import { NeonButton } from './NeonButton';
 import { ImageWithFallback } from './figma/ImageWithFallback';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 interface NFTDetailScreenProps {
   nft: any;

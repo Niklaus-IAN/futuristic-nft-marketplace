@@ -1,7 +1,7 @@
 import React from 'react';
 import { User, Shield, Bell, Palette, Moon, Info, LogOut, ChevronRight, Edit } from 'lucide-react';
 import { GlassCard } from './GlassCard';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 interface ProfileScreenProps {
   userName: string;
@@ -148,7 +148,7 @@ export function ProfileScreen({ userName, onLogout, nftCount, totalValue }: Prof
 
         {/* App Version */}
         <p className="text-center text-white/40 text-sm">
-          Nexus NFT v1.0.0
+          kryptoArt NFT v1.0.0
         </p>
       </div>
     </div>

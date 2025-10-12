@@ -12,7 +12,7 @@ import { ProjectsScreen } from './components/ProjectsScreen';
 import { ProfileScreen } from './components/ProfileScreen';
 import { BottomNav } from './components/BottomNav';
 import { Toaster } from './components/ui/sonner';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 type Screen = 
   | 'splash'

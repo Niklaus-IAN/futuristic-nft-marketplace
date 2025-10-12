@@ -34,7 +34,7 @@ export function SplashScreen({ onComplete }: SplashScreenProps) {
         
         <div className="text-center">
           <h1 className="text-5xl font-thin tracking-wider mb-2 bg-gradient-to-r from-cyan-400 via-purple-400 to-magenta-400 text-transparent bg-clip-text">
-            NEXUS
+            kryptoArt
           </h1>
           <p className="text-white/60 tracking-widest uppercase text-sm">NFT Marketplace</p>
         </div>

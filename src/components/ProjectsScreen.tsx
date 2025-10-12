@@ -3,7 +3,7 @@ import { Plus, Target, Users, TrendingUp, X } from 'lucide-react';
 import { GlassCard } from './GlassCard';
 import { NeonButton } from './NeonButton';
 import { ImageWithFallback } from './figma/ImageWithFallback';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 interface ProjectsScreenProps {
   onCreateProject: () => void;
