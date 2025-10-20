@@ -1,17 +1,29 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Plus, ArrowUpRight, ArrowDownLeft, RefreshCw, Wallet as WalletIcon, X } from 'lucide-react';
 import { GlassCard } from './GlassCard';
 import { NeonButton } from './NeonButton';
+import { NFTGallery } from './NFTGallery';
 import { toast } from 'sonner';
+import { useAccount, useBalance, useDisconnect } from 'wagmi'
+import { useChainId, useSwitchChain } from 'wagmi'
+import { formatEther } from 'viem'
+import { Alchemy, Network } from 'alchemy-sdk'
 
 interface WalletScreenProps {
-  balance: number;
   onSend: (amount: number) => void;
   onReceive: () => void;
   onConvert: (fromAmount: number, fromCurrency: string, toCurrency: string) => void;
 }
 
-export function WalletScreen({ balance, onSend, onReceive, onConvert }: WalletScreenProps) {
+export function WalletScreen({ onSend, onReceive, onConvert }: WalletScreenProps) {
+const { address, isConnected } = useAccount()
+const { data: balanceData } = useBalance({ address })
+const { disconnect } = useDisconnect()
+const chainId = useChainId()
+const { switchChain } = useSwitchChain()
+
+// Use real balance from blockchain
+const realBalance = balanceData ? parseFloat(formatEther(balanceData.value)) : 0
   const [activeTab, setActiveTab] = useState<'assets' | 'transactions' | 'convert'>('assets');
   const [showSendModal, setShowSendModal] = useState(false);
   const [showReceiveModal, setShowReceiveModal] = useState(false);
@@ -20,6 +32,144 @@ export function WalletScreen({ balance, onSend, onReceive, onConvert }: WalletSc
   const [convertFromAmount, setConvertFromAmount] = useState('');
   const [convertFromCurrency, setConvertFromCurrency] = useState('ETH');
   const [convertToCurrency, setConvertToCurrency] = useState('USDC');
+  const [pricesUsd, setPricesUsd] = useState<{ ETH: number; USDC: number; MATIC: number }>({ ETH: 0, USDC: 1, MATIC: 0 });
+  const [isLoadingRates, setIsLoadingRates] = useState(false);
+  const [topCoins, setTopCoins] = useState<any[]>([]);
+  const [tokenBalances, setTokenBalances] = useState<Array<{ symbol: string; name: string; balance: string; usd?: number }>>([]);
+  const [txs, setTxs] = useState<any[]>([]);
+
+  // Fetch live USD prices using CoinGecko (no API key needed)
+  useEffect(() => {
+    const fetchPrices = async () => {
+      try {
+        setIsLoadingRates(true);
+        const res = await fetch(
+          'https://api.coingecko.com/api/v3/simple/price?ids=ethereum,usd-coin,polygon-pos&vs_currencies=usd',
+          { cache: 'no-store' }
+        );
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        setPricesUsd({
+          ETH: data?.ethereum?.usd ?? 0,
+          USDC: data?.['usd-coin']?.usd ?? 1,
+          MATIC: data?.['polygon-pos']?.usd ?? 0,
+        });
+      } catch (e) {
+        toast.error('Failed to load live prices');
+      } finally {
+        setIsLoadingRates(false);
+      }
+    };
+    fetchPrices();
+    const id = setInterval(fetchPrices, 60_000); // refresh every 60s
+    return () => clearInterval(id);
+  }, []);
+
+  const getRate = (from: string, to: string): number => {
+    const fromUsd = pricesUsd[from as keyof typeof pricesUsd] || 0;
+    const toUsd = pricesUsd[to as keyof typeof pricesUsd] || 0;
+    if (!fromUsd || !toUsd) return 0;
+    // amount_in_to = amount_in_from * (fromUsd / toUsd)
+    return fromUsd / toUsd;
+  };
+
+  // Top 5 market coins (CoinGecko)
+  useEffect(() => {
+    const loadTopCoins = async () => {
+      try {
+        const url = 'https://api.coingecko.com/api/v3/coins/markets'
+          + '?vs_currency=usd&ids=bitcoin,ethereum,solana,usd-coin,binancecoin'
+          + '&price_change_percentage=1h,24h,7d';
+        const res = await fetch(url, { cache: 'no-store' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        setTopCoins(Array.isArray(data) ? data : []);
+      } catch (e) {
+        // silent fail; widget degrades gracefully
+      }
+    };
+    loadTopCoins();
+    const id = setInterval(loadTopCoins, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Real user assets (ETH + ERC-20) and recent transfers (Alchemy)
+  useEffect(() => {
+    const fetchOnChainData = async () => {
+      if (!address) return;
+
+      const settings = {
+        apiKey: (import.meta as any).env.VITE_ALCHEMY_API_KEY?.replace('https://eth-sepolia.g.alchemy.com/v2/', ''),
+        network: Network.ETH_SEPOLIA,
+      };
+      const alchemy = new Alchemy(settings);
+
+      // ERC-20 balances
+      try {
+        const erc20 = await alchemy.core.getTokenBalances(address);
+        const detailed = await Promise.all(
+          erc20.tokenBalances
+            .filter((t) => t.tokenBalance)
+            .slice(0, 25)
+            .map(async (t) => {
+              const meta = await alchemy.core.getTokenMetadata(t.contractAddress);
+              const decimals = meta.decimals ?? 18;
+              const raw = t.tokenBalance as string; // hex string
+              let amount = 0;
+              try {
+                amount = Number(BigInt(raw)) / Math.pow(10, decimals);
+              } catch {
+                amount = 0;
+              }
+              const symbol = (meta.symbol || 'TOKEN').toUpperCase();
+              const name = meta.name || t.contractAddress.slice(0, 6);
+              const usd = symbol === 'ETH' ? amount * pricesUsd.ETH
+                : symbol === 'USDC' ? amount * pricesUsd.USDC
+                : symbol === 'MATIC' ? amount * pricesUsd.MATIC
+                : undefined;
+              return { symbol, name, balance: amount.toFixed(4), usd };
+            })
+        );
+
+        // Prepend ETH balance
+        const ethItem = {
+          symbol: 'ETH',
+          name: 'Ethereum',
+          balance: realBalance.toFixed(4),
+          usd: pricesUsd.ETH ? realBalance * pricesUsd.ETH : undefined,
+        };
+        setTokenBalances([ethItem, ...detailed]);
+      } catch {
+        setTokenBalances([]);
+      }
+
+      // Recent transfers (incoming + outgoing)
+      try {
+        const incoming = await alchemy.core.getAssetTransfers({
+          toAddress: address,
+          category: ['external', 'erc20', 'erc721', 'erc1155'] as unknown as any,
+          withMetadata: true,
+          maxCount: 15 as unknown as any,
+          order: 'desc' as unknown as any,
+        });
+        const outgoing = await alchemy.core.getAssetTransfers({
+          fromAddress: address,
+          category: ['external', 'erc20', 'erc721', 'erc1155'] as unknown as any,
+          withMetadata: true,
+          maxCount: 15 as unknown as any,
+          order: 'desc' as unknown as any,
+        });
+        const merged = [...(incoming.transfers || []), ...(outgoing.transfers || [])]
+          .sort((a: any, b: any) => (new Date(b.metadata?.blockTimestamp || '').getTime() - new Date(a.metadata?.blockTimestamp || '').getTime()))
+          .slice(0, 20);
+        setTxs(merged);
+      } catch {
+        setTxs([]);
+      }
+    };
+
+    fetchOnChainData();
+  }, [address, realBalance, pricesUsd]);
 
   const handleSend = () => {
     const amount = parseFloat(sendAmount);
@@ -31,7 +181,7 @@ export function WalletScreen({ balance, onSend, onReceive, onConvert }: WalletSc
       toast.error('Please enter a recipient address');
       return;
     }
-    if (amount > balance) {
+    if (amount > realBalance) {
       toast.error('Insufficient funds');
       return;
     }
@@ -59,7 +209,7 @@ export function WalletScreen({ balance, onSend, onReceive, onConvert }: WalletSc
       toast.error('Please enter a valid amount');
       return;
     }
-    if (amount > balance) {
+    if (amount > realBalance) {
       toast.error('Insufficient funds');
       return;
     }
@@ -67,10 +217,26 @@ export function WalletScreen({ balance, onSend, onReceive, onConvert }: WalletSc
     setConvertFromAmount('');
   };
 
+  // Network names mapping
+  const getNetworkName = (chainId: number) => {
+    switch (chainId) {
+      case 1: return 'Ethereum Mainnet'
+      case 11155111: return 'Sepolia Testnet'
+      case 137: return 'Polygon'
+      case 56: return 'BSC'
+      default: return 'Unknown Network'
+    }
+  }
+
+  // Use real wallet data
   const wallets = [
-    { name: 'MetaMask', address: '0x742d...a4f3', balance: '12.5 ETH', usd: '$21,450', connected: true },
-    { name: 'Coinbase Wallet', address: '0x8f3b...2e1a', balance: '5.2 ETH', usd: '$8,932', connected: true },
-    { name: 'Trust Wallet', address: 'Not Connected', balance: '0 ETH', usd: '$0', connected: false }
+    { 
+      name: 'Connected Wallet', 
+      address: address ? `${address.slice(0, 6)}...${address.slice(-4)}` : 'Not Connected', 
+      balance: realBalance ? `${realBalance.toFixed(4)} ETH` : '0 ETH', 
+      usd: realBalance && pricesUsd.ETH ? `$${(realBalance * pricesUsd.ETH).toFixed(2)}` : '$0', 
+      connected: isConnected 
+    }
   ];
 
   const assets = [
@@ -90,7 +256,20 @@ export function WalletScreen({ balance, onSend, onReceive, onConvert }: WalletSc
     <div className="min-h-screen bg-gradient-to-br from-[#0a0a0f] via-[#1a0a2e] to-[#0a0a0f] pb-32">
       <div className="relative z-10 px-6 pt-12">
         {/* Header */}
-        <h1 className="text-3xl mb-6">Wallet</h1>
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-3xl">Wallet</h1>
+          {isConnected ? (
+            <div className="flex items-center gap-2 text-green-400">
+              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+              <span className="text-sm font-mono">{address?.slice(0, 6)}...{address?.slice(-4)}</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-red-400">
+              <div className="w-2 h-2 bg-red-400 rounded-full"></div>
+              <span className="text-sm">Not Connected</span>
+            </div>
+          )}
+        </div>
 
         {/* Total Balance Card */}
         <GlassCard className="p-6 mb-6 relative overflow-hidden" glow>
@@ -98,10 +277,12 @@ export function WalletScreen({ balance, onSend, onReceive, onConvert }: WalletSc
           <div className="relative">
             <p className="text-white/60 text-sm mb-2">Total Balance</p>
             <div className="flex items-end gap-2 mb-1">
-              <h2 className="text-5xl">{balance.toFixed(2)}</h2>
+              <h2 className="text-5xl">{realBalance.toFixed(4)}</h2>
               <span className="text-xl text-white/60 mb-1">ETH</span>
             </div>
-            <p className="text-white/60 text-sm mb-1">≈ ${(balance * 1716).toFixed(2)}</p>
+              <p className="text-white/60 text-sm mb-1">
+                ≈ {pricesUsd.ETH ? `$${(realBalance * pricesUsd.ETH).toFixed(2)}` : '—'}
+              </p>
             <p className="text-green-400 text-sm mb-6">+$1,234 (3.6%) this month</p>
             
             <div className="flex gap-3">
@@ -130,6 +311,18 @@ export function WalletScreen({ balance, onSend, onReceive, onConvert }: WalletSc
           </div>
         </GlassCard>
 
+        {/* Add this after the balance display */}
+        <div className="flex items-center gap-2 mb-4">
+          <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+          <span className="text-white/60 text-sm">{getNetworkName(chainId)}</span>
+          <button 
+            onClick={() => switchChain({ chainId: 11155111 })} // Switch to Sepolia
+            className="text-cyan-400 text-xs hover:text-cyan-300"
+          >
+            Switch Network
+          </button>
+        </div>
+
         {/* Tabs */}
         <div className="flex gap-2 mb-6 overflow-x-auto pb-2 scrollbar-hide">
           {['assets', 'transactions', 'convert'].map((tab) => (
@@ -149,61 +342,82 @@ export function WalletScreen({ balance, onSend, onReceive, onConvert }: WalletSc
           ))}
         </div>
 
-        {/* Assets Tab */}
+        {/* Top Coins Widget */}
+        {activeTab === 'assets' && topCoins?.length > 0 && (
+          <GlassCard className="p-4 mb-4">
+            <h3 className="mb-3">Top Coins</h3>
+            <div className="space-y-3">
+              {topCoins.map((c) => (
+                <div key={c.id} className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <img src={c.image} className="w-6 h-6 rounded-full" />
+                    <div>
+                      <div className="text-sm">{c.name} ({String(c.symbol).toUpperCase()})</div>
+                      <div className="text-xs text-white/60">Rank #{c.market_cap_rank}</div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div>${c.current_price?.toLocaleString?.() || c.current_price}</div>
+                    <div className={`text-xs ${c.price_change_percentage_24h >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {c.price_change_percentage_24h?.toFixed?.(2)}%
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </GlassCard>
+        )}
+
+        {/* Assets Tab (real on-chain) */}
         {activeTab === 'assets' && (
           <div className="space-y-4">
-            {assets.map((asset) => (
-              <GlassCard key={asset.symbol} className="p-4 hover:bg-white/10 cursor-pointer">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-cyan-500/20 to-purple-500/20 flex items-center justify-center text-2xl">
-                    {asset.logo}
-                  </div>
-                  <div className="flex-1">
+            {tokenBalances.length === 0 ? (
+              <GlassCard className="p-4 text-center text-white/60">No assets found</GlassCard>
+            ) : (
+              tokenBalances.map((asset, i) => (
+                <GlassCard key={`${asset.symbol}-${i}`} className="p-4 hover:bg-white/10 cursor-pointer">
+                  <div className="flex items-center justify-between">
+                    <div>
                     <h4 className="mb-1">{asset.name}</h4>
                     <p className="text-white/60 text-sm">{asset.balance} {asset.symbol}</p>
                   </div>
                   <div className="text-right">
-                    <p className="mb-1">{asset.usd}</p>
-                    <p className={`text-sm ${asset.change.startsWith('+') ? 'text-green-400' : 'text-red-400'}`}>
-                      {asset.change}
-                    </p>
-                  </div>
+                      <p className="text-sm">{asset.usd ? `$${asset.usd.toFixed(2)}` : '—'}</p>
+                    </div>
                 </div>
               </GlassCard>
-            ))}
+              ))
+            )}
           </div>
         )}
 
-        {/* Transactions Tab */}
+        {/* Transactions Tab (real on-chain) */}
         {activeTab === 'transactions' && (
           <div className="space-y-4">
-            {transactions.map((tx, index) => (
-              <GlassCard key={index} className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                      tx.type === 'Received' ? 'bg-green-500/20' : tx.type === 'Sent' ? 'bg-red-500/20' : 'bg-purple-500/20'
-                    }`}>
-                      {tx.type === 'Received' ? (
-                        <ArrowDownLeft className="w-5 h-5 text-green-400" />
-                      ) : tx.type === 'Sent' ? (
-                        <ArrowUpRight className="w-5 h-5 text-red-400" />
-                      ) : (
-                        <WalletIcon className="w-5 h-5 text-purple-400" />
-                      )}
-                    </div>
-                    <div>
-                      <h4 className="text-sm">{tx.type}</h4>
-                      <p className="text-white/60 text-xs">{tx.date}</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className={tx.amount.startsWith('+') ? 'text-green-400' : 'text-white'}>{tx.amount}</p>
-                    <p className="text-white/40 text-xs capitalize">{tx.status}</p>
+            {txs.length === 0 ? (
+              <GlassCard className="p-4 text-center text-white/60">No recent activity</GlassCard>
+            ) : (
+              txs.map((t, idx) => {
+                const isIn = String(t.to || '').toLowerCase() === String(address || '').toLowerCase();
+                const label = (t.category || 'tx').toUpperCase();
+                const ts = t.metadata?.blockTimestamp ? new Date(t.metadata.blockTimestamp).toLocaleString() : '';
+                const amountEth = t.value ? `${t.value} ETH` : '';
+                return (
+                  <GlassCard key={idx} className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="text-sm">{label}</h4>
+                        <p className="text-white/60 text-xs">{ts}</p>
+                      </div>
+                      <div className={`text-right ${isIn ? 'text-green-400' : 'text-white'}`}>
+                        <p>{isIn ? '+' : '-'}{amountEth}</p>
+                        <a className="text-xs text-cyan-400" target="_blank" rel="noreferrer" href={`https://sepolia.etherscan.io/tx/${t.hash}`}>View</a>
                   </div>
                 </div>
               </GlassCard>
-            ))}
+                );
+              })
+            )}
           </div>
         )}
 
@@ -254,7 +468,12 @@ export function WalletScreen({ balance, onSend, onReceive, onConvert }: WalletSc
                     <input
                       type="number"
                       placeholder="0.00"
-                      value={convertFromAmount ? (parseFloat(convertFromAmount) * 1716).toFixed(2) : ''}
+                      value={(() => {
+                        const amt = parseFloat(convertFromAmount || '');
+                        const rate = getRate(convertFromCurrency, convertToCurrency);
+                        if (!convertFromAmount || !amt || !rate) return '';
+                        return (amt * rate).toFixed(6);
+                      })()}
                       readOnly
                       className="flex-1 bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white"
                     />
@@ -275,7 +494,12 @@ export function WalletScreen({ balance, onSend, onReceive, onConvert }: WalletSc
             <GlassCard className="p-4 mb-6">
               <div className="flex justify-between items-center mb-2">
                 <span className="text-white/60 text-sm">Exchange Rate</span>
-                <span className="text-sm">1 ETH = 1,716 USDC</span>
+                <span className="text-sm">
+                  {isLoadingRates ? 'Loading...' : (() => {
+                    const r = getRate('ETH', 'USDC');
+                    return r ? `1 ETH = ${r.toFixed(4)} USDC` : '—';
+                  })()}
+                </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-white/60 text-sm">Network Fee</span>
@@ -292,43 +516,50 @@ export function WalletScreen({ balance, onSend, onReceive, onConvert }: WalletSc
         {/* Connected Wallets */}
         <div className="mt-8">
           <h3 className="text-lg mb-4 text-white/90">Connected Wallets</h3>
+          {isConnected ? (
           <div className="space-y-3">
             {wallets.map((wallet) => (
               <GlassCard key={wallet.name} className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
                     <h4 className="mb-1">{wallet.name}</h4>
-                    <p className="text-white/60 text-sm">{wallet.address}</p>
+                      <p className="text-white/60 text-sm font-mono">{address}</p>
                   </div>
-                  {wallet.connected ? (
                     <div className="text-right">
                       <p className="text-cyan-400">{wallet.balance}</p>
                       <p className="text-white/60 text-sm">{wallet.usd}</p>
                     </div>
-                  ) : (
-                    <button 
-                      onClick={() => toast.success('Wallet connected!')}
-                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500/20 to-purple-500/20 border border-cyan-400/30 text-cyan-400 text-sm hover:from-cyan-500/30 hover:to-purple-500/30 transition-all"
-                    >
-                      Connect
-                    </button>
-                  )}
                 </div>
               </GlassCard>
             ))}
           </div>
-
+          ) : (
+            <GlassCard className="p-6 text-center">
+              <div className="text-white/60 mb-4">
+                <WalletIcon className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                <p className="text-lg mb-2">No Wallet Connected</p>
+                <p className="text-sm">Connect your wallet to view your assets and manage your portfolio</p>
+              </div>
           <NeonButton 
             variant="outline" 
-            className="w-full mt-4"
-            onClick={() => toast.info('Wallet connection initiated')}
+                className="w-full"
+                onClick={() => toast.info('Please connect your wallet in the Sign In screen')}
           >
             <span className="flex items-center justify-center gap-2">
               <Plus className="w-5 h-5" />
-              Add Wallet
+                  Connect Wallet
             </span>
           </NeonButton>
+            </GlassCard>
+          )}
         </div>
+
+        {/* NFT Collection */}
+        {isConnected && (
+          <div className="mt-8">
+            <NFTGallery />
+          </div>
+        )}
       </div>
 
       {/* Send Modal */}
@@ -351,7 +582,7 @@ export function WalletScreen({ balance, onSend, onReceive, onConvert }: WalletSc
                 onChange={(e) => setSendAmount(e.target.value)}
                 className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white"
               />
-              <p className="text-white/40 text-xs mt-2">Available: {balance.toFixed(2)} ETH</p>
+              <p className="text-white/40 text-xs mt-2">Available: {realBalance.toFixed(2)} ETH</p>
             </div>
 
             <div className="mb-6">

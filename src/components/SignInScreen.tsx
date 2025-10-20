@@ -3,24 +3,64 @@ import { Mail, Chrome, Wallet as WalletIcon } from 'lucide-react';
 import { GlassCard } from './GlassCard';
 import { NeonButton } from './NeonButton';
 import { Input } from './ui/input';
+import { useConnect, useAccount, useConnections } from 'wagmi'
+import { injected, walletConnect } from 'wagmi/connectors'
+import { auth, googleProvider } from '../config/firebase';
+import { signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 
 interface SignInScreenProps {
   onSignIn: (name: string) => void;
+  onGoToSignUp?: () => void;
 }
 
-export function SignInScreen({ onSignIn }: SignInScreenProps) {
+export function SignInScreen({ onSignIn, onGoToSignUp }: SignInScreenProps) {
+  const { connect, isPending } = useConnect()
+  const { isConnected, address } = useAccount()
+  // const { connections } = useConnections()
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
 
-  const handleEmailSignIn = () => {
-    if (email) {
+  const handleEmailSignIn = async () => {
+    if (!email || !password) return;
+    try {
+      // Try to create account first; if exists, sign in
+      try {
+        await createUserWithEmailAndPassword(auth, email, password);
+      } catch (error: any) {
+        if (error.code === 'auth/email-already-in-use') {
+          await signInWithEmailAndPassword(auth, email, password);
+        } else {
+          throw error;
+        }
+      }
       const name = email.split('@')[0];
       onSignIn(name);
+    } catch (e: any) {
+      console.error('Email sign-in failed', e?.code, e?.message);
     }
   };
 
-  const handleWalletConnect = () => {
-    onSignIn('User');
-  };
+  // Replace the existing handleWalletConnect function with:
+  const handleWalletConnect = async () => {
+    try {
+      await connect({ connector: injected() })
+      if (isConnected && address) {
+        onSignIn('User') // You can extract name from address or ENS
+      }
+    } catch (error) {
+      console.error('Failed to connect wallet:', error)
+    }
+  }
+
+  const handleGoogleSignIn = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+      const user = auth.currentUser;
+      onSignIn(user?.displayName || user?.email?.split('@')[0] || 'User');
+    } catch (e) {
+      console.error('Google sign-in failed', e);
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#0a0a0f] via-[#1a0a2e] to-[#0a0a0f] flex flex-col items-center justify-center px-6 relative overflow-hidden">
@@ -54,10 +94,22 @@ export function SignInScreen({ onSignIn }: SignInScreenProps) {
             />
           </div>
 
+          {/* Password Input */}
+          <div className="mb-6">
+            <label className="block text-sm text-white/80 mb-2">Password</label>
+            <Input
+              type="password"
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="bg-white/5 border-white/10 rounded-2xl px-4 py-3 text-white placeholder:text-white/40 focus:border-cyan-400/50 focus:ring-cyan-400/20"
+            />
+          </div>
+
           <NeonButton 
             onClick={handleEmailSignIn} 
             className="w-full mb-4"
-            disabled={!email}
+            disabled={!email || !password}
           >
             <span className="flex items-center justify-center gap-2">
               <Mail className="w-5 h-5" />
@@ -74,25 +126,26 @@ export function SignInScreen({ onSignIn }: SignInScreenProps) {
 
           {/* Social Buttons */}
           <div className="space-y-3">
-            <NeonButton variant="secondary" onClick={handleWalletConnect} className="w-full">
+            <NeonButton variant="secondary" onClick={handleGoogleSignIn} className="w-full">
               <span className="flex items-center justify-center gap-2">
                 <Chrome className="w-5 h-5" />
                 Continue with Google
               </span>
             </NeonButton>
 
-            <NeonButton variant="outline" onClick={handleWalletConnect} className="w-full">
+            <NeonButton variant="outline" onClick={handleWalletConnect} className="w-full" disabled={isPending}>
               <span className="flex items-center justify-center gap-2">
                 <WalletIcon className="w-5 h-5" />
-                Connect Wallet
+                {isPending ? 'Connecting...' : 'Connect Wallet'}
               </span>
             </NeonButton>
           </div>
 
-          {/* Footer Text */}
-          <p className="text-center text-white/40 text-xs mt-6">
-            By continuing, you agree to our Terms of Service and Privacy Policy
-          </p>
+          {/* Footer Links */}
+          <div className="text-center text-white/40 text-xs mt-6">
+            <p className="mb-2">By continuing, you agree to our Terms of Service and Privacy Policy</p>
+            <button onClick={onGoToSignUp} className="text-cyan-400 hover:text-cyan-300">Create an account</button>
+          </div>
         </GlassCard>
       </div>
     </div>

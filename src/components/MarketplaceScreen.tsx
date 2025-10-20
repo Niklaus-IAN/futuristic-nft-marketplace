@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Search, Filter, TrendingUp, Clock, Sparkles } from 'lucide-react';
 import { GlassCard } from './GlassCard';
 import { ImageWithFallback } from './figma/ImageWithFallback';
+import { NFTGallery } from './NFTGallery';
+import { useAccount } from 'wagmi';
 
 interface MarketplaceScreenProps {
   onSelectNFT: (nft: any) => void;
@@ -11,61 +13,14 @@ interface MarketplaceScreenProps {
 }
 
 export function MarketplaceScreen({ onSelectNFT, userNFTs, likedNFTs, onLike }: MarketplaceScreenProps) {
+  const { isConnected } = useAccount();
   const [activeTab, setActiveTab] = useState<'trending' | 'new' | 'my-nfts'>('trending');
   const [searchQuery, setSearchQuery] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [priceFilter, setPriceFilter] = useState<'all' | 'low' | 'mid' | 'high'>('all');
 
-  const nfts = [
-    {
-      id: 1,
-      title: 'Cosmic Dreams #001',
-      creator: 'ArtistX',
-      price: '2.5 ETH',
-      image: 'https://images.unsplash.com/photo-1654792393225-3e8a53d124d2?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMG5mdCUyMGFydHxlbnwxfHx8fDE3NjAyNzgwMDF8MA&ixlib=rb-4.1.0&q=80&w=1080',
-      likes: 234
-    },
-    {
-      id: 2,
-      title: 'Digital Realm #042',
-      creator: 'CryptoArt',
-      price: '1.8 ETH',
-      image: 'https://images.unsplash.com/photo-1622570230304-a37c75da9d70?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxkaWdpdGFsJTIwY3J5cHRvJTIwYXJ0fGVufDF8fHx8MTc2MDI3ODAwMXww&ixlib=rb-4.1.0&q=80&w=1080',
-      likes: 189
-    },
-    {
-      id: 3,
-      title: 'Neon Futures #123',
-      creator: 'FutureWave',
-      price: '3.2 ETH',
-      image: 'https://images.unsplash.com/photo-1662012061995-0cd4a7ef2d12?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxuZW9uJTIwbGlnaHRzJTIwYWJzdHJhY3R8ZW58MXx8fHwxNzYwMjMyNDk5fDA&ixlib=rb-4.1.0&q=80&w=1080',
-      likes: 412
-    },
-    {
-      id: 4,
-      title: 'Cyber Genesis #007',
-      creator: 'PixelMaster',
-      price: '4.1 ETH',
-      image: 'https://images.unsplash.com/photo-1672581437674-3186b17b405a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxmdXR1cmlzdGljJTIwdGVjaG5vbG9neXxlbnwxfHx8fDE3NjAyMDk4ODF8MA&ixlib=rb-4.1.0&q=80&w=1080',
-      likes: 567
-    },
-    {
-      id: 5,
-      title: 'Abstract Void #256',
-      creator: 'VoidCreator',
-      price: '0.9 ETH',
-      image: 'https://images.unsplash.com/photo-1572756317709-fe9c15ced298?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxnZW9tZXRyaWMlMjBwYXR0ZXJufGVufDF8fHx8MTc2MDI3ODAwMnww&ixlib=rb-4.1.0&q=80&w=1080',
-      likes: 145
-    },
-    {
-      id: 6,
-      title: 'Digital Landscape #089',
-      creator: 'LandscapeDAO',
-      price: '2.2 ETH',
-      image: 'https://images.unsplash.com/photo-1633151188217-7c4c512f7a76?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxkaWdpdGFsJTIwbGFuZHNjYXBlfGVufDF8fHx8MTc2MDE2Njk0Mnww&ixlib=rb-4.1.0&q=80&w=1080',
-      likes: 298
-    }
-  ];
+  // Real marketplace data will be fetched from blockchain/API
+  const nfts: any[] = [];
 
   const tabs = [
     { id: 'trending', label: 'Trending', icon: TrendingUp },
@@ -170,18 +125,23 @@ export function MarketplaceScreen({ onSelectNFT, userNFTs, likedNFTs, onLike }: 
         </div>
 
         {/* NFT Grid */}
-        {displayNFTs.length === 0 ? (
-          <GlassCard className="p-12 text-center mb-8">
-            <Sparkles className="w-16 h-16 mx-auto mb-4 text-white/40" />
-            <h3 className="mb-2">No NFTs found</h3>
-            <p className="text-white/60">
-              {activeTab === 'my-nfts' 
-                ? 'You haven\'t purchased or minted any NFTs yet'
-                : 'Try adjusting your search or filters'
-              }
-            </p>
-          </GlassCard>
-        ) : (
+            {activeTab === 'my-nfts' ? (
+              <NFTGallery />
+            ) : displayNFTs.length === 0 ? (
+              <GlassCard className="p-12 text-center mb-8">
+                <Sparkles className="w-16 h-16 mx-auto mb-4 text-white/40" />
+                <h3 className="mb-2">
+                  {activeTab === 'trending' ? 'Marketplace Coming Soon' : 
+                   activeTab === 'new' ? 'New Listings Coming Soon' : 
+                   'No NFTs found'}
+                </h3>
+                <p className="text-white/60">
+                  {activeTab === 'trending' || activeTab === 'new' ? 
+                   'P2P marketplace features will be available soon' : 
+                   'Try adjusting your search or filters'}
+                </p>
+              </GlassCard>
+            ) : (
           <div className="grid grid-cols-2 gap-4 mb-8">
             {displayNFTs.map((nft) => {
               const isLiked = likedNFTs.has(nft.id);

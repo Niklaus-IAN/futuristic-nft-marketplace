@@ -2,19 +2,21 @@ import React from 'react';
 import { User, Shield, Bell, Palette, Moon, Info, LogOut, ChevronRight, Edit } from 'lucide-react';
 import { GlassCard } from './GlassCard';
 import { toast } from 'sonner';
+import { useAccount } from 'wagmi';
 
 interface ProfileScreenProps {
   userName: string;
   onLogout: () => void;
   nftCount: number;
-  totalValue: number;
 }
 
-export function ProfileScreen({ userName, onLogout, nftCount, totalValue }: ProfileScreenProps) {
+export function ProfileScreen({ userName, onLogout, nftCount }: ProfileScreenProps) {
+  const { isConnected, address } = useAccount();
+  
   const userStats = [
     { label: 'NFTs Owned', value: nftCount.toString() },
     { label: 'Created', value: nftCount.toString() },
-    { label: 'Total Value', value: `${totalValue.toFixed(2)} ETH` }
+    { label: 'Wallet Connected', value: isConnected ? 'Yes' : 'No' }
   ];
 
   const handleMenuClick = (label: string) => {
@@ -75,10 +77,21 @@ export function ProfileScreen({ userName, onLogout, nftCount, totalValue }: Prof
 
             <div className="flex-1">
               <h2 className="text-2xl mb-1">{userName}</h2>
-              <p className="text-white/60 text-sm mb-2">0x742d...a4f3</p>
+              <p className="text-white/60 text-sm mb-2 font-mono">
+                {isConnected && address ? `${address.slice(0, 6)}...${address.slice(-4)}` : 'Not Connected'}
+              </p>
               <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                <span className="text-green-400 text-sm">Connected</span>
+                {isConnected ? (
+                  <>
+                    <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                    <span className="text-green-400 text-sm">Connected</span>
+                  </>
+                ) : (
+                  <>
+                    <div className="w-2 h-2 bg-red-400 rounded-full"></div>
+                    <span className="text-red-400 text-sm">Not Connected</span>
+                  </>
+                )}
               </div>
             </div>
           </div>

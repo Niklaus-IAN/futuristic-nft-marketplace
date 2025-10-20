@@ -1,7 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { CheckCircle, Sparkles } from 'lucide-react';
+import { CheckCircle, Sparkles, Loader2, ExternalLink } from 'lucide-react';
+import { ConnectWalletCTA } from './ConnectWalletCTA';
 import { GlassCard } from './GlassCard';
 import { NeonButton } from './NeonButton';
+import { useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi';
+import { CONTRACT_ADDRESS, CONTRACT_ABI } from '../config/contract';
+import { toast } from 'sonner';
 
 interface MintConfirmationScreenProps {
   nftData: any;
@@ -10,19 +14,74 @@ interface MintConfirmationScreenProps {
 }
 
 export function MintConfirmationScreen({ nftData, onComplete, onViewNFT }: MintConfirmationScreenProps) {
-  const [minting, setMinting] = useState(true);
+  const [minting, setMinting] = useState(false);
   const [minted, setMinted] = useState(false);
+  const [txHash, setTxHash] = useState<string | null>(null);
+  const [tokenId, setTokenId] = useState<number | null>(null);
+  
+  const { address, isConnected } = useAccount();
+  const { writeContract, data: hash, isPending, error } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
+    hash,
+  });
+
+  // Realistic gas fee estimation for ERC721 minting
+  const estimatedGasFee = 0.0025; // Fallback for display only
+
+  const handleMint = async () => {
+    if (!isConnected) {
+      toast.error('Please connect your wallet first');
+      return;
+    }
+
+    if (!nftData.metadataUrl) {
+      toast.error('No metadata URL found. Please go back and create your NFT again.');
+      return;
+    }
+
+    setMinting(true);
+    
+    try {
+      await writeContract({
+        address: CONTRACT_ADDRESS,
+        abi: CONTRACT_ABI,
+        functionName: 'mintNFT',
+        args: [nftData.metadataUrl],
+      });
+    } catch (err) {
+      console.error('Minting failed:', err);
+      toast.error('Failed to start minting transaction');
+      setMinting(false);
+    }
+  };
 
   useEffect(() => {
-    // Simulate minting process
-    const timer = setTimeout(() => {
+    if (hash) {
+      setTxHash(hash);
+      toast.success('Transaction submitted!', {
+        description: `Hash: ${hash.slice(0, 10)}...`
+      });
+    }
+  }, [hash]);
+
+  useEffect(() => {
+    if (isConfirmed && hash) {
       setMinting(false);
       setMinted(true);
-      // Trigger confetti effect
-    }, 3000);
+      toast.success('🎉 NFT Minted Successfully!', {
+        description: 'Your NFT is now on the blockchain'
+      });
+    }
+  }, [isConfirmed, hash]);
 
-    return () => clearTimeout(timer);
-  }, []);
+  useEffect(() => {
+    if (error) {
+      setMinting(false);
+      toast.error('Transaction failed', {
+        description: error.message
+      });
+    }
+  }, [error]);
 
   // Safety check
   if (!nftData) {
@@ -38,6 +97,95 @@ export function MintConfirmationScreen({ nftData, onComplete, onViewNFT }: MintC
       </div>
 
       <div className="relative z-10 w-full max-w-md">
+        {!minting && !minted && (
+          <div className="text-center">
+            {/* NFT Preview */}
+            <div className="mb-8 flex justify-center">
+              <div className="relative">
+                <div className="absolute inset-0 bg-gradient-to-r from-cyan-500 via-purple-500 to-magenta-500 rounded-3xl blur-2xl opacity-50 animate-glow"></div>
+                <GlassCard className="relative p-8" glow>
+                  <div className="w-48 h-48 mx-auto rounded-2xl overflow-hidden">
+                    {nftData.image && (
+                      <img src={nftData.image} alt="NFT Preview" className="w-full h-full object-cover" />
+                    )}
+                  </div>
+                </GlassCard>
+              </div>
+            </div>
+
+            <h2 className="text-2xl mb-4">Ready to Mint</h2>
+            <p className="text-white/60 mb-8">Your NFT is ready to be minted on the blockchain</p>
+
+            {/* NFT Details */}
+            <GlassCard className="p-6 mb-6 text-left">
+              <div className="flex justify-between items-center mb-3">
+                <span className="text-white/60">NFT Name</span>
+                <span>{nftData.name}</span>
+              </div>
+              <div className="flex justify-between items-center mb-3">
+                <span className="text-white/60">Description</span>
+                <span className="text-right max-w-48 truncate">{nftData.description}</span>
+              </div>
+              <div className="flex justify-between items-center mb-3">
+                <span className="text-white/60">Blockchain</span>
+                <span>{nftData.blockchain}</span>
+              </div>
+              <div className="flex justify-between items-center mb-3">
+                <span className="text-white/60">Estimated Gas Fee</span>
+                <span className="text-cyan-400">~{estimatedGasFee} ETH</span>
+              </div>
+              <div className="h-px bg-white/10 my-4"></div>
+              <div className="flex justify-between items-center">
+                <span>Total Cost</span>
+                <span className="text-lg text-cyan-400">~{estimatedGasFee} ETH</span>
+              </div>
+            </GlassCard>
+
+            {/* Transaction Status */}
+            {txHash && (
+              <GlassCard className="p-4 mb-6">
+                <div className="flex items-center gap-2 mb-2">
+                  <Loader2 className="w-4 h-4 animate-spin text-cyan-400" />
+                  <span className="text-sm">Transaction Pending</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-white/60">Hash:</span>
+                  <a 
+                    href={`https://sepolia.etherscan.io/tx/${txHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-1"
+                  >
+                    {txHash.slice(0, 10)}...{txHash.slice(-8)}
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+              </GlassCard>
+            )}
+
+            {isConnected ? (
+              <NeonButton 
+                onClick={handleMint} 
+                className="w-full"
+                disabled={isPending || isConfirming}
+              >
+                {isPending || isConfirming ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    {isPending ? 'Confirm in Wallet...' : 'Confirming...'}
+                  </>
+                ) : (
+                  'Mint NFT'
+                )}
+              </NeonButton>
+            ) : (
+              <ConnectWalletCTA
+                message="Please connect your wallet to proceed with minting."
+              />
+            )}
+          </div>
+        )}
+
         {minting && (
           <div className="text-center">
             {/* Animated NFT Token */}
@@ -69,12 +217,12 @@ export function MintConfirmationScreen({ nftData, onComplete, onViewNFT }: MintC
               </div>
               <div className="flex justify-between items-center mb-3">
                 <span className="text-white/60">Estimated Gas Fee</span>
-                <span className="text-cyan-400">0.0045 ETH</span>
+                <span className="text-cyan-400">~{estimatedGasFee} ETH</span>
               </div>
               <div className="h-px bg-white/10 my-4"></div>
               <div className="flex justify-between items-center">
                 <span>Total Cost</span>
-                <span className="text-lg text-cyan-400">0.0045 ETH</span>
+                <span className="text-lg text-cyan-400">~{estimatedGasFee} ETH</span>
               </div>
             </GlassCard>
 
@@ -122,6 +270,28 @@ export function MintConfirmationScreen({ nftData, onComplete, onViewNFT }: MintC
             <p className="text-white/60 mb-8">
               Your NFT has been minted and is now live on the {nftData.blockchain} blockchain
             </p>
+            
+            {/* Transaction Details */}
+            {txHash && (
+              <GlassCard className="p-4 mb-6">
+                <div className="flex items-center gap-2 mb-2">
+                  <CheckCircle className="w-4 h-4 text-green-400" />
+                  <span className="text-sm">Transaction Confirmed</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-white/60">Hash:</span>
+                  <a 
+                    href={`https://sepolia.etherscan.io/tx/${txHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-1"
+                  >
+                    {txHash.slice(0, 10)}...{txHash.slice(-8)}
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+              </GlassCard>
+            )}
 
             <GlassCard className="p-6 mb-8">
               <div className="flex items-center gap-4">

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { SplashScreen } from './components/SplashScreen';
 import { OnboardingScreen } from './components/OnboardingScreen';
 import { SignInScreen } from './components/SignInScreen';
+import { SignUpScreen } from './components/SignUpScreen';
 import { HomeScreen } from './components/HomeScreen';
 import { CreateNFTScreen } from './components/CreateNFTScreen';
 import { MintConfirmationScreen } from './components/MintConfirmationScreen';
@@ -13,11 +14,20 @@ import { ProfileScreen } from './components/ProfileScreen';
 import { BottomNav } from './components/BottomNav';
 import { Toaster } from './components/ui/sonner';
 import { toast } from 'sonner';
+import { WagmiProvider, useChainId, useDisconnect } from 'wagmi';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { config } from './config/wagmi';
+import { useOwnedNfts } from './hooks/useOwnedNfts';
+import { auth } from './config/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+
+const queryClient = new QueryClient();
 
 type Screen = 
   | 'splash'
   | 'onboarding'
   | 'signin'
+  | 'signup'
   | 'home'
   | 'create-nft'
   | 'mint'
@@ -27,7 +37,8 @@ type Screen =
   | 'projects'
   | 'profile';
 
-export default function App() {
+// Web3-aware component
+function AppContent() {
   const [currentScreen, setCurrentScreen] = useState<Screen>('splash');
   const [userName, setUserName] = useState('');
   const [nftData, setNftData] = useState<any>(null);
@@ -37,14 +48,31 @@ export default function App() {
   // App State
   const [userNFTs, setUserNFTs] = useState<any[]>([]);
   const [likedNFTs, setLikedNFTs] = useState<Set<number>>(new Set());
-  const [walletBalance, setWalletBalance] = useState(12.5);
   const [contributedProjects, setContributedProjects] = useState<Set<number>>(new Set());
+  
+  // Web3 hooks
+  const chainId = useChainId();
+  const isTestnet = chainId === 11155111;
+  const { nfts: ownedNfts } = useOwnedNfts();
+  const ownedNftCount = ownedNfts.length;
+  const { disconnect } = useDisconnect();
 
   useEffect(() => {
     // Show bottom nav on main app screens
     const mainScreens: Screen[] = ['home', 'marketplace', 'wallet', 'projects', 'profile'];
     setShowBottomNav(mainScreens.includes(currentScreen));
   }, [currentScreen]);
+
+  // Persist Firebase auth and show display name
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        const name = user.displayName || user.email?.split('@')[0] || 'User';
+        setUserName(name);
+      }
+    });
+    return () => unsub();
+  }, []);
 
   const handleNavigation = (screen: Screen, data?: any) => {
     setCurrentScreen(screen);
@@ -62,25 +90,23 @@ export default function App() {
     setCurrentScreen('home');
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      const { auth } = await import('./config/firebase');
+      const { signOut } = await import('firebase/auth');
+      await signOut(auth);
+    } catch {}
+    try { disconnect(); } catch {}
     setUserName('');
     setCurrentScreen('signin');
     toast.success('Logged out successfully');
   };
 
   const handlePurchaseNFT = (nft: any) => {
-    if (walletBalance >= parseFloat(nft.price)) {
-      setWalletBalance(prev => prev - parseFloat(nft.price));
-      setUserNFTs(prev => [...prev, nft]);
-      toast.success(`Successfully purchased ${nft.title}!`, {
-        description: `You now own this NFT for ${nft.price}`
-      });
-      setCurrentScreen('marketplace');
-    } else {
-      toast.error('Insufficient funds', {
-        description: 'Please add more ETH to your wallet'
-      });
-    }
+    // P2P marketplace functionality will be implemented later
+    toast.info('P2P Marketplace Coming Soon', {
+      description: 'Direct NFT trading features will be available soon'
+    });
   };
 
   const handleLikeNFT = (nftId: number) => {
@@ -98,17 +124,10 @@ export default function App() {
   };
 
   const handleContributeToProject = (projectId: number, amount: number) => {
-    if (walletBalance >= amount) {
-      setWalletBalance(prev => prev - amount);
-      setContributedProjects(prev => new Set(prev).add(projectId));
-      toast.success('Contribution successful!', {
-        description: `You contributed ${amount} ETH to the project`
-      });
-    } else {
-      toast.error('Insufficient funds', {
-        description: 'Please add more ETH to your wallet'
-      });
-    }
+    // Crowdfunding functionality will be implemented later
+    toast.info('Crowdfunding Coming Soon', {
+      description: 'Project contribution features will be available soon'
+    });
   };
 
   const handleMintNFT = (data: any) => {
@@ -127,15 +146,17 @@ export default function App() {
         return <OnboardingScreen onComplete={() => setCurrentScreen('signin')} />;
       
       case 'signin':
-        return <SignInScreen onSignIn={handleSignIn} />;
+        return <SignInScreen onSignIn={handleSignIn} onGoToSignUp={() => setCurrentScreen('signup')} />;
+      
+      case 'signup':
+        return <SignUpScreen onSignedUp={handleSignIn} onGoToSignIn={() => setCurrentScreen('signin')} />;
       
       case 'home':
         return (
           <HomeScreen 
             userName={userName} 
             onNavigate={handleNavigation}
-            walletBalance={walletBalance}
-            userNFTCount={userNFTs.length}
+            userNFTCount={ownedNftCount}
           />
         );
       
@@ -153,8 +174,7 @@ export default function App() {
             <HomeScreen 
               userName={userName} 
               onNavigate={handleNavigation}
-              walletBalance={walletBalance}
-              userNFTCount={userNFTs.length}
+              userNFTCount={ownedNftCount}
             />
           );
         }
@@ -203,11 +223,10 @@ export default function App() {
       case 'wallet':
         return (
           <WalletScreen 
-            balance={walletBalance}
             onSend={(amount) => {
-              setWalletBalance(prev => prev - amount);
-              toast.success('Transaction sent!', {
-                description: `${amount} ETH sent successfully`
+              // Real wallet transactions will be handled by Web3
+              toast.info('Wallet Integration Coming Soon', {
+                description: 'Direct wallet transactions will be available soon'
               });
             }}
             onReceive={() => {
@@ -239,24 +258,28 @@ export default function App() {
           <ProfileScreen 
             userName={userName} 
             onLogout={handleLogout}
-            nftCount={userNFTs.length}
-            totalValue={walletBalance}
+            nftCount={ownedNftCount}
           />
         );
       
       default:
-        return <HomeScreen userName={userName} onNavigate={handleNavigation} />;
+        return <HomeScreen userName={userName} onNavigate={handleNavigation} userNFTCount={ownedNftCount} />;
     }
   };
 
   return (
     <div className="size-full bg-gradient-to-br from-[#0a0a0f] via-[#1a0a2e] to-[#0a0a0f]">
+      {isTestnet && (
+        <div className="bg-yellow-500/20 border border-yellow-500/30 text-yellow-400 p-3 mb-4 mx-6 rounded-xl">
+          <p className="text-sm">⚠️ You're on Sepolia Testnet - This is for testing only</p>
+        </div>
+      )}
       {renderScreen()}
       
       {showBottomNav && (
         <BottomNav
-          activeScreen={currentScreen}
-          onNavigate={(screen) => setCurrentScreen(screen as Screen)}
+          activeScreen={currentScreen as any}
+          onNavigate={(screen) => setCurrentScreen(screen as any)}
         />
       )}
       
@@ -267,5 +290,16 @@ export default function App() {
         theme="dark"
       />
     </div>
+  );
+}
+
+// Main App component with providers
+export default function App() {
+  return (
+    <WagmiProvider config={config}>
+      <QueryClientProvider client={queryClient}>
+        <AppContent />
+      </QueryClientProvider>
+    </WagmiProvider>
   );
 }

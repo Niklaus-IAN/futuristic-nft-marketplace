@@ -1,9 +1,13 @@
 import React, { useState } from 'react';
-import { Upload, Sparkles, ArrowLeft, Image as ImageIcon } from 'lucide-react';
+import { useAccount } from 'wagmi';
+import { ConnectWalletCTA } from './ConnectWalletCTA';
+import { Upload, Sparkles, ArrowLeft, Image as ImageIcon, Loader2 } from 'lucide-react';
 import { GlassCard } from './GlassCard';
 import { NeonButton } from './NeonButton';
 import { Input } from './ui/input';
 import { Textarea } from './ui/textarea';
+import { uploadToIPFS, createNFTMetadata } from '../utils/ipfsUpload';
+import { toast } from 'sonner';
 
 interface CreateNFTScreenProps {
   onBack: () => void;
@@ -11,6 +15,7 @@ interface CreateNFTScreenProps {
 }
 
 export function CreateNFTScreen({ onBack, onNext }: CreateNFTScreenProps) {
+  const { isConnected } = useAccount();
   const [artMode, setArtMode] = useState<'upload' | 'ai' | null>(null);
   const [nftData, setNftData] = useState({
     name: '',
@@ -22,14 +27,92 @@ export function CreateNFTScreen({ onBack, onNext }: CreateNFTScreenProps) {
   });
   const [aiPrompt, setAiPrompt] = useState('');
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [attributes, setAttributes] = useState<Array<{ trait_type: string; value: string }>>([]);
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setSelectedFile(file);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setUploadedImage(e.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleUploadToIPFS = async () => {
+    if (!selectedFile) {
+      toast.error('Please select a file first');
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const imageUrl = await uploadToIPFS(selectedFile);
+      setUploadedImage(imageUrl);
+      toast.success('Image uploaded to IPFS successfully!');
+    } catch (error) {
+      console.error('IPFS upload failed:', error);
+      toast.error('Failed to upload image to IPFS');
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   const handleGenerateAI = () => {
     // Simulate AI generation
     setUploadedImage('https://images.unsplash.com/photo-1633151188217-7c4c512f7a76?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxkaWdpdGFsJTIwbGFuZHNjYXBlfGVufDF8fHx8MTc2MDE2Njk0Mnww&ixlib=rb-4.1.0&q=80&w=1080');
   };
 
-  const handleNext = () => {
-    onNext({ ...nftData, image: uploadedImage });
+  const addAttribute = () => {
+    setAttributes([...attributes, { trait_type: '', value: '' }]);
+  };
+
+  const updateAttribute = (index: number, field: 'trait_type' | 'value', value: string) => {
+    const newAttributes = [...attributes];
+    newAttributes[index][field] = value;
+    setAttributes(newAttributes);
+  };
+
+  const removeAttribute = (index: number) => {
+    setAttributes(attributes.filter((_, i) => i !== index));
+  };
+
+  const handleNext = async () => {
+    if (!uploadedImage) {
+      toast.error('Please upload an image first');
+      return;
+    }
+
+    if (!nftData.name || !nftData.description) {
+      toast.error('Please fill in the name and description');
+      return;
+    }
+
+    try {
+      setIsUploading(true);
+      const metadataUrl = await createNFTMetadata(
+        nftData.name,
+        nftData.description,
+        uploadedImage,
+        attributes.filter(attr => attr.trait_type && attr.value)
+      );
+      
+      onNext({ 
+        ...nftData, 
+        image: uploadedImage,
+        metadataUrl,
+        attributes: attributes.filter(attr => attr.trait_type && attr.value)
+      });
+    } catch (error) {
+      console.error('Metadata creation failed:', error);
+      toast.error('Failed to create NFT metadata');
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   return (
@@ -45,6 +128,16 @@ export function CreateNFTScreen({ onBack, onNext }: CreateNFTScreenProps) {
           </button>
           <h1 className="text-2xl">Create NFT</h1>
         </div>
+
+        {/* Wallet CTA (shown when not connected) */}
+        {!isConnected && (
+          <div className="mb-6">
+            <ConnectWalletCTA
+              message="Connect your wallet to mint on-chain. You can still prepare metadata without a wallet."
+              onGoToSignIn={onBack}
+            />
+          </div>
+        )}
 
         {/* Art Upload/Generation */}
         {!artMode && (
@@ -92,16 +185,7 @@ export function CreateNFTScreen({ onBack, onNext }: CreateNFTScreenProps) {
                 accept="image/*"
                 className="hidden"
                 id="file-upload"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    const reader = new FileReader();
-                    reader.onloadend = () => {
-                      setUploadedImage(reader.result as string);
-                    };
-                    reader.readAsDataURL(file);
-                  }
-                }}
+                onChange={handleFileUpload}
               />
               <div className="inline-block">
                 <NeonButton variant="outline">Choose File</NeonButton>
@@ -194,12 +278,75 @@ export function CreateNFTScreen({ onBack, onNext }: CreateNFTScreenProps) {
               </div>
             </div>
 
+            {/* IPFS Upload Section */}
+            {artMode === 'upload' && selectedFile && (
+              <div className="mb-6">
+                <NeonButton 
+                  onClick={handleUploadToIPFS} 
+                  className="w-full mb-4"
+                  disabled={isUploading}
+                >
+                  {isUploading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Uploading to IPFS...
+                    </>
+                  ) : (
+                    'Upload to IPFS'
+                  )}
+                </NeonButton>
+              </div>
+            )}
+
+            {/* Attributes Section */}
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-4">
+                <label className="block text-sm text-white/80">Attributes</label>
+                <button
+                  onClick={addAttribute}
+                  className="text-cyan-400 text-sm hover:text-cyan-300"
+                >
+                  + Add Attribute
+                </button>
+              </div>
+              
+              {attributes.map((attr, index) => (
+                <div key={index} className="flex gap-2 mb-2">
+                  <Input
+                    placeholder="Trait Type"
+                    value={attr.trait_type}
+                    onChange={(e) => updateAttribute(index, 'trait_type', e.target.value)}
+                    className="bg-white/5 border-white/10 rounded-2xl px-4 py-3 text-white placeholder:text-white/40"
+                  />
+                  <Input
+                    placeholder="Value"
+                    value={attr.value}
+                    onChange={(e) => updateAttribute(index, 'value', e.target.value)}
+                    className="bg-white/5 border-white/10 rounded-2xl px-4 py-3 text-white placeholder:text-white/40"
+                  />
+                  <button
+                    onClick={() => removeAttribute(index)}
+                    className="px-3 py-2 text-red-400 hover:text-red-300"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+
             <NeonButton 
               onClick={handleNext} 
               className="w-full"
-              disabled={!nftData.name || !nftData.price}
+              disabled={!nftData.name || !nftData.price || isUploading}
             >
-              Continue to Mint
+              {isUploading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Creating Metadata...
+                </>
+              ) : (
+                'Continue to Mint'
+              )}
             </NeonButton>
           </>
         )}

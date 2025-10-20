@@ -17,44 +17,8 @@ export function ProjectsScreen({ onCreateProject, onContribute, contributedProje
   const [contributionAmount, setContributionAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('MetaMask Wallet');
 
-  const projects = [
-    {
-      id: 1,
-      title: 'Digital Art Museum',
-      creator: 'ArtDAO',
-      description: 'Building the first decentralized digital art museum',
-      goal: '50 ETH',
-      raised: '32.5 ETH',
-      percentage: 65,
-      backers: 234,
-      daysLeft: 12,
-      image: 'https://images.unsplash.com/photo-1654792393225-3e8a53d124d2?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMG5mdCUyMGFydHxlbnwxfHx8fDE3NjAyNzgwMDF8MA&ixlib=rb-4.1.0&q=80&w=1080'
-    },
-    {
-      id: 2,
-      title: 'NFT Gaming Platform',
-      creator: 'GameFi Studios',
-      description: 'Revolutionary play-to-earn gaming ecosystem',
-      goal: '100 ETH',
-      raised: '78.3 ETH',
-      percentage: 78,
-      backers: 567,
-      daysLeft: 8,
-      image: 'https://images.unsplash.com/photo-1672581437674-3186b17b405a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxmdXR1cmlzdGljJTIwdGVjaG5vbG9neXxlbnwxfHx8fDE3NjAyMDk4ODF8MA&ixlib=rb-4.1.0&q=80&w=1080'
-    },
-    {
-      id: 3,
-      title: 'Creator Fund',
-      creator: 'NFT Artists Collective',
-      description: 'Supporting emerging NFT artists worldwide',
-      goal: '25 ETH',
-      raised: '19.2 ETH',
-      percentage: 77,
-      backers: 189,
-      daysLeft: 15,
-      image: 'https://images.unsplash.com/photo-1622570230304-a37c75da9d70?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxkaWdpdGFsJTIwY3J5cHRvJTIwYXJ0fGVufDF8fHx8MTc2MDI3ODAwMXww&ixlib=rb-4.1.0&q=80&w=1080'
-    }
-  ];
+  // Real crowdfunding projects will be fetched from blockchain/API
+  const projects: any[] = [];
 
   const handleContribute = (project: any) => {
     setSelectedProject(project);
@@ -117,7 +81,21 @@ export function ProjectsScreen({ onCreateProject, onContribute, contributedProje
         <h3 className="text-lg mb-4 text-white/90">Featured Projects</h3>
         
         <div className="space-y-4 mb-8">
-          {projects.map((project) => (
+          {projects.length === 0 ? (
+            <GlassCard className="p-12 text-center mb-8">
+              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-cyan-500/20 to-purple-500/20 flex items-center justify-center mx-auto mb-4">
+                <Plus className="w-8 h-8 text-white/60" />
+              </div>
+              <h3 className="text-xl mb-2">Crowdfunding Coming Soon</h3>
+              <p className="text-white/60 mb-6">
+                Project crowdfunding features will be available soon
+              </p>
+              <NeonButton onClick={onCreateProject} variant="outline">
+                Be the First to Launch
+              </NeonButton>
+            </GlassCard>
+          ) : (
+            projects.map((project) => (
             <GlassCard key={project.id} className="overflow-hidden">
               <div className="relative h-48">
                 <ImageWithFallback
@@ -164,7 +142,8 @@ export function ProjectsScreen({ onCreateProject, onContribute, contributedProje
                 </NeonButton>
               </div>
             </GlassCard>
-          ))}
+            ))
+          )}
         </div>
 
         {/* Create Project CTA */}

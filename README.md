@@ -41,7 +41,7 @@ The app is designed mobile-first and works perfectly on:
 
 ## 🎯 Live Demo
 
-[Add your deployed URL here]
+https://kryptoart.vercel.app/
 
 ## 📄 License
 

@@ -3,14 +3,26 @@ import { Plus, Palette, Coins, ShoppingBag, Wallet as WalletIcon, ChevronRight, 
 import { GlassCard } from './GlassCard';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 
+type Screen = 
+  | 'splash'
+  | 'onboarding'
+  | 'signin'
+  | 'home'
+  | 'create-nft'
+  | 'mint'
+  | 'marketplace'
+  | 'nft-detail'
+  | 'wallet'
+  | 'projects'
+  | 'profile';
+
 interface HomeScreenProps {
   userName: string;
-  onNavigate: (screen: string, data?: any) => void;
-  walletBalance: number;
+  onNavigate: (screen: Screen, data?: any) => void;
   userNFTCount: number;
 }
 
-export function HomeScreen({ userName, onNavigate, walletBalance, userNFTCount }: HomeScreenProps) {
+export function HomeScreen({ userName, onNavigate, userNFTCount }: HomeScreenProps) {
   const quickActions = [
     { icon: Palette, label: 'Create NFT', color: 'from-cyan-500 to-blue-500', screen: 'create-nft' },
     { icon: Coins, label: 'Mint NFT', color: 'from-purple-500 to-pink-500', screen: 'mint' },
@@ -63,14 +75,14 @@ export function HomeScreen({ userName, onNavigate, walletBalance, userNFTCount }
         <GlassCard className="p-6 mb-8 relative overflow-hidden" glow>
           <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-cyan-500/20 to-purple-500/20 rounded-full blur-2xl"></div>
           <div className="relative">
-            <p className="text-white/60 text-sm mb-2">Total Balance</p>
+            <p className="text-white/60 text-sm mb-2">Your NFT Collection</p>
             <div className="flex items-end gap-2 mb-4">
-              <h2 className="text-4xl">{walletBalance.toFixed(2)}</h2>
-              <span className="text-xl text-white/60 mb-1">ETH</span>
+              <h2 className="text-4xl">{userNFTCount}</h2>
+              <span className="text-xl text-white/60 mb-1">NFTs</span>
             </div>
-            <div className="flex items-center gap-2 text-green-400 text-sm">
+            <div className="flex items-center gap-2 text-cyan-400 text-sm">
               <TrendingUp className="w-4 h-4" />
-              <span>+15.3% this month</span>
+              <span>View in Wallet</span>
             </div>
           </div>
         </GlassCard>
@@ -85,7 +97,7 @@ export function HomeScreen({ userName, onNavigate, walletBalance, userNFTCount }
                 <GlassCard
                   key={action.label}
                   className="p-6 cursor-pointer hover:scale-105 transition-transform"
-                  onClick={() => onNavigate(action.screen)}
+                  onClick={() => onNavigate(action.screen as Screen)}
                 >
                   <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${action.color} flex items-center justify-center mb-3 shadow-lg`}>
                     <Icon className="w-6 h-6 text-white" />
