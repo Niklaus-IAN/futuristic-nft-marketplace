@@ -14,11 +14,14 @@ interface SignInScreenProps {
 }
 
 export function SignInScreen({ onSignIn, onGoToSignUp }: SignInScreenProps) {
-  const { connect, isPending } = useConnect()
+  const { connect, connectors, isPending } = useConnect()
   const { isConnected, address } = useAccount()
   // const { connections } = useConnections()
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  const injectedConn = connectors?.find((c) => c.id === 'injected');
+  const wcConn = connectors?.find((c) => c.id === 'walletConnect' || c.name?.toLowerCase?.().includes('walletconnect'));
 
   const handleEmailSignIn = async () => {
     if (!email || !password) return;
@@ -41,14 +44,27 @@ export function SignInScreen({ onSignIn, onGoToSignUp }: SignInScreenProps) {
   };
 
   // Replace the existing handleWalletConnect function with:
-  const handleWalletConnect = async () => {
+  const handleInjected = async () => {
     try {
-      await connect({ connector: injected() })
+      if (!injectedConn) return;
+      await connect({ connector: injectedConn })
       if (isConnected && address) {
-        onSignIn('User') // You can extract name from address or ENS
+        onSignIn('User')
       }
     } catch (error) {
-      console.error('Failed to connect wallet:', error)
+      console.error('Failed to connect injected wallet:', error)
+    }
+  }
+
+  const handleWalletConnect = async () => {
+    try {
+      if (!wcConn) return;
+      await connect({ connector: wcConn })
+      if (isConnected && address) {
+        onSignIn('User')
+      }
+    } catch (error) {
+      console.error('Failed to connect via WalletConnect:', error)
     }
   }
 
@@ -133,12 +149,30 @@ export function SignInScreen({ onSignIn, onGoToSignUp }: SignInScreenProps) {
               </span>
             </NeonButton>
 
-            <NeonButton variant="outline" onClick={handleWalletConnect} className="w-full" disabled={isPending}>
+            {/* WalletConnect - best for mobile wallets */}
+            <NeonButton onClick={handleWalletConnect} className="w-full" disabled={isPending || !wcConn}>
               <span className="flex items-center justify-center gap-2">
                 <WalletIcon className="w-5 h-5" />
-                {isPending ? 'Connecting...' : 'Connect Wallet'}
+                {isPending ? 'Connecting...' : 'Continue with WalletConnect'}
               </span>
             </NeonButton>
+
+            {/* Injected - works on desktop or in wallet in-app browsers */}
+            <NeonButton variant="outline" onClick={handleInjected} className="w-full" disabled={isPending || !injectedConn}>
+              <span className="flex items-center justify-center gap-2">
+                <WalletIcon className="w-5 h-5" />
+                {isPending ? 'Connecting...' : 'Connect Browser Wallet'}
+              </span>
+            </NeonButton>
+
+            {/* MetaMask deep link for mobile */}
+            {isMobile && (
+              <a className="block" href="https://metamask.app.link/dapp/kryptoart.vercel.app" rel="noreferrer">
+                <NeonButton variant="secondary" className="w-full">
+                  Open in MetaMask App
+                </NeonButton>
+              </a>
+            )}
           </div>
 
           {/* Footer Links */}
